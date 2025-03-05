@@ -3,9 +3,11 @@ package com.example.videoplayerapp
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.MediaMetadataRetriever
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -19,11 +21,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.videoplayerapp.ui.theme.VideoPlayerAppTheme
@@ -63,15 +68,8 @@ fun PermissionScreen(modifier: Modifier = Modifier) {
             Text(
                 text = "Permission Required",
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            Text(
-                text = "To play videos, please allow access to videos on your device.",
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = {
                 val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Manifest.permission.READ_MEDIA_VIDEO
@@ -79,9 +77,7 @@ fun PermissionScreen(modifier: Modifier = Modifier) {
                     Manifest.permission.READ_EXTERNAL_STORAGE
                 }
                 requestPermissionLauncher.launch(permission)
-            },
-                modifier = Modifier.padding(16.dp)
-            ) {
+            }) {
                 Text("ALLOW")
             }
         }
@@ -99,31 +95,66 @@ fun checkPermission(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen() {
     val context = LocalContext.current
+    var selectedFolder by remember { mutableStateOf<String?>(null) }
     val folders = remember { getVideoFolders(context) }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(folders) { folder ->
-            FolderItem(folder)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(text = selectedFolder ?: "Videos")
+                },
+                navigationIcon = {
+                    if (selectedFolder != null) {
+                        IconButton(onClick = { selectedFolder = null }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.arrow_back),
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(android.graphics.Color.parseColor("#292929")),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
+                )
+            )
+        }
+
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            if (selectedFolder == null) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(folders) { folder ->
+                        FolderItem(folder) { selectedFolder = it }
+                    }
+                }
+            } else {
+                VideoListScreen(folderName = selectedFolder!!, context = context)
+            }
         }
     }
 }
 
+
 @Composable
-fun FolderItem(folder: VideoFolder) {
+fun FolderItem(folder: VideoFolder, onClick: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { /* Możesz tu dodać akcję po kliknięciu */ }
+            .clickable { onClick(folder.name) }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             painter = painterResource(id = R.drawable.heroicons_folder),
             contentDescription = "Folder",
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(40.dp),
             tint = Color.Gray
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -133,10 +164,58 @@ fun FolderItem(folder: VideoFolder) {
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = folder.videoCount.toString(),
-            color = Color.Gray,
-            fontWeight = FontWeight.Normal
+            text = "${folder.videoCount}",
+            color = Color.Gray
         )
+    }
+}
+
+@Composable
+fun VideoListScreen(folderName: String, context: Context) {
+    val videos = remember { getVideosInFolder(context, folderName) }
+
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(videos) { video ->
+            VideoItem(videoPath = video)
+        }
+    }
+}
+
+
+@Composable
+fun VideoItem(videoPath: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        val bitmap = remember(videoPath) { getVideoThumbnail(videoPath) }
+        val duration = remember(videoPath) { getVideoDuration(videoPath) }
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = "Video Thumbnail",
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(RectangleShape),
+                contentScale = ContentScale.Crop
+            )
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column {
+            Text(
+                text = File(videoPath).name,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = duration,
+                color = Color.Gray,
+                fontSize = MaterialTheme.typography.bodySmall.fontSize
+            )
+        }
     }
 }
 
@@ -157,4 +236,43 @@ fun getVideoFolders(context: Context): List<VideoFolder> {
     }
 
     return videoFolders.map { VideoFolder(it.key, it.value) }
+}
+
+fun getVideosInFolder(context: Context, folderName: String): List<String> {
+    val videoExtensions = listOf("mp4", "mkv", "avi", "mov", "flv")
+    val storageDir = Environment.getExternalStorageDirectory()
+    val folder = File(storageDir, folderName)
+
+    return folder.listFiles()?.filter { it.extension.lowercase() in videoExtensions }?.map { it.absolutePath } ?: emptyList()
+}
+
+fun getVideoThumbnail(videoPath: String): Bitmap? {
+    return try {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(videoPath)
+        val bitmap = retriever.frameAtTime
+        retriever.release()
+        bitmap
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun getVideoDuration(videoPath: String): String {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(videoPath)
+        val time = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+        retriever.release()
+        formatDuration(time)
+    } catch (e: Exception) {
+        retriever.release()
+        "Unknown"
+    }
+}
+
+fun formatDuration(durationMs: Long): String {
+    val minutes = (durationMs / 1000) / 60
+    val seconds = (durationMs / 1000) % 60
+    return String.format("%02d:%02d", minutes, seconds)
 }
