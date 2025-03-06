@@ -30,8 +30,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.example.videoplayerapp.ui.theme.VideoPlayerAppTheme
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -95,47 +100,50 @@ fun checkPermission(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen() {
     val context = LocalContext.current
     var selectedFolder by remember { mutableStateOf<String?>(null) }
-    val folders = remember { getVideoFolders(context) }
+    var selectedVideo by remember { mutableStateOf<String?>(null) }
+
+    // Pobieramy foldery **poza LazyColumn**
+    val folders by remember { mutableStateOf(getVideoFolders(context)) }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(text = selectedFolder ?: "Videos")
-                },
-                navigationIcon = {
-                    if (selectedFolder != null) {
-                        IconButton(onClick = { selectedFolder = null }) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.arrow_back),
-                                contentDescription = "Back"
-                            )
+            if (selectedVideo == null) { // Ukrywamy pasek, gdy odtwarzamy wideo
+                TopAppBar(
+                    title = { Text(text = selectedFolder ?: "Videos") },
+                    navigationIcon = {
+                        if (selectedFolder != null) {
+                            IconButton(onClick = { selectedFolder = null }) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.arrow_back),
+                                    contentDescription = "Back"
+                                )
+                            }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(android.graphics.Color.parseColor("#292929")),
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(android.graphics.Color.parseColor("#292929")),
+                        titleContentColor = Color.White,
+                        navigationIconContentColor = Color.White
+                    )
                 )
-            )
+            }
         }
-
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            if (selectedFolder == null) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+            when {
+                selectedVideo != null -> VideoPlayerScreen(videoPath = selectedVideo!!) { selectedVideo = null }
+                selectedFolder != null -> VideoListScreen(folderName = selectedFolder!!, context = context) { selectedVideo = it }
+                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(folders) { folder ->
                         FolderItem(folder) { selectedFolder = it }
                     }
                 }
-            } else {
-                VideoListScreen(folderName = selectedFolder!!, context = context)
             }
         }
     }
@@ -171,27 +179,29 @@ fun FolderItem(folder: VideoFolder, onClick: (String) -> Unit) {
 }
 
 @Composable
-fun VideoListScreen(folderName: String, context: Context) {
+fun VideoListScreen(folderName: String, context: Context, onVideoClick: (String) -> Unit) {
     val videos = remember { getVideosInFolder(context, folderName) }
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(videos) { video ->
-            VideoItem(videoPath = video)
+            VideoItem(videoPath = video, onClick = { onVideoClick(video) })
         }
     }
 }
 
 
 @Composable
-fun VideoItem(videoPath: String) {
+fun VideoItem(videoPath: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable { onClick() }
             .padding(16.dp),
         verticalAlignment = Alignment.Top
     ) {
         val bitmap = remember(videoPath) { getVideoThumbnail(videoPath) }
         val duration = remember(videoPath) { getVideoDuration(videoPath) }
+
         bitmap?.let {
             Image(
                 bitmap = it.asImageBitmap(),
@@ -219,7 +229,10 @@ fun VideoItem(videoPath: String) {
     }
 }
 
+
+
 data class VideoFolder(val name: String, val videoCount: Int)
+
 
 fun getVideoFolders(context: Context): List<VideoFolder> {
     val videoExtensions = listOf("mp4", "mkv", "avi", "mov", "flv")
@@ -272,6 +285,7 @@ fun getVideoThumbnail(videoPath: String): Bitmap? {
     }
 }
 
+
 fun getVideoDuration(videoPath: String): String {
     val retriever = MediaMetadataRetriever()
     return try {
@@ -285,8 +299,62 @@ fun getVideoDuration(videoPath: String): String {
     }
 }
 
+
 fun formatDuration(durationMs: Long): String {
     val minutes = (durationMs / 1000) / 60
     val seconds = (durationMs / 1000) % 60
     return String.format("%02d:%02d", minutes, seconds)
 }
+
+
+@Composable
+fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val systemUiController = rememberSystemUiController()
+
+    SideEffect {
+        systemUiController.isSystemBarsVisible = false
+    }
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            val mediaItem = MediaItem.fromUri(videoPath)
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+            systemUiController.isSystemBarsVisible = true
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                }
+            }
+        )
+
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .padding(16.dp)
+                .size(48.dp)
+                .align(Alignment.TopStart)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.arrow_back),
+                contentDescription = "Back",
+                tint = Color.White
+            )
+        }
+    }
+}
+
