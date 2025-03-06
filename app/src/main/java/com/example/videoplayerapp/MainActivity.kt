@@ -226,25 +226,39 @@ fun getVideoFolders(context: Context): List<VideoFolder> {
     val videoFolders = mutableMapOf<String, Int>()
     val storageDir = Environment.getExternalStorageDirectory()
 
-    storageDir.listFiles()?.forEach { file ->
-        if (file.isDirectory) {
-            val videoCount = file.listFiles()?.count { it.extension.lowercase() in videoExtensions } ?: 0
-            if (videoCount > 0) {
-                videoFolders[file.name] = videoCount
-            }
+    fun scanFolder(folder: File) {
+        val videoCount = folder.listFiles()?.count { it.isFile && it.extension.lowercase() in videoExtensions } ?: 0
+        if (videoCount > 0) {
+            videoFolders[folder.name] = (videoFolders[folder.name] ?: 0) + videoCount
+        }
+        folder.listFiles()?.filter { it.isDirectory }?.forEach { subFolder ->
+            scanFolder(subFolder)
         }
     }
 
+    scanFolder(storageDir)
     return videoFolders.map { VideoFolder(it.key, it.value) }
 }
+
 
 fun getVideosInFolder(context: Context, folderName: String): List<String> {
     val videoExtensions = listOf("mp4", "mkv", "avi", "mov", "flv")
     val storageDir = Environment.getExternalStorageDirectory()
-    val folder = File(storageDir, folderName)
+    val videoFiles = mutableListOf<String>()
 
-    return folder.listFiles()?.filter { it.extension.lowercase() in videoExtensions }?.map { it.absolutePath } ?: emptyList()
+    fun scanFolder(folder: File) {
+        if (folder.name == folderName) {
+            videoFiles += folder.listFiles()?.filter {
+                it.isFile && it.extension.lowercase() in videoExtensions
+            }?.map { it.absolutePath } ?: emptyList()
+        }
+        folder.listFiles()?.filter { it.isDirectory }?.forEach { scanFolder(it) }
+    }
+
+    scanFolder(storageDir)
+    return videoFiles
 }
+
 
 fun getVideoThumbnail(videoPath: String): Bitmap? {
     return try {
