@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.graphics.Bitmap
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -107,13 +108,11 @@ fun FolderListScreen() {
     val context = LocalContext.current
     var selectedFolder by remember { mutableStateOf<String?>(null) }
     var selectedVideo by remember { mutableStateOf<String?>(null) }
-
-    // Pobieramy foldery **poza LazyColumn**
     val folders by remember { mutableStateOf(getVideoFolders(context)) }
 
     Scaffold(
         topBar = {
-            if (selectedVideo == null) { // Ukrywamy pasek, gdy odtwarzamy wideo
+            if (selectedVideo == null) {
                 TopAppBar(
                     title = { Text(text = selectedFolder ?: "Videos") },
                     navigationIcon = {
@@ -316,12 +315,24 @@ fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
         systemUiController.isSystemBarsVisible = false
     }
 
+    val videoFolder = File(videoPath).parent ?: ""
+    val videoFiles = remember { getVideosInFolder(context, File(videoFolder).name) }
+    var currentVideoIndex by remember { mutableStateOf(videoFiles.indexOf(videoPath)) }
+
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.fromUri(videoPath)
-            setMediaItem(mediaItem)
+            setMediaItem(MediaItem.fromUri(videoPath))
             prepare()
             playWhenReady = true
+        }
+    }
+
+    fun playVideoAt(index: Int) {
+        if (index in videoFiles.indices) {
+            currentVideoIndex = index
+            exoPlayer.setMediaItem(MediaItem.fromUri(videoFiles[index]))
+            exoPlayer.prepare()
+            exoPlayer.playWhenReady = true
         }
     }
 
@@ -338,6 +349,43 @@ fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
+
+                    val prevButton = findViewById<View>(androidx.media3.ui.R.id.exo_prev)
+                    val nextButton = findViewById<View>(androidx.media3.ui.R.id.exo_next)
+
+                    fun updateButtons() {
+                        prevButton?.post {
+                            val canGoBack = currentVideoIndex > 0
+                            prevButton.isEnabled = canGoBack
+                            prevButton.alpha = if (canGoBack) 1.0f else 0.5f
+                        }
+
+                        nextButton?.post {
+                            val canGoForward = currentVideoIndex < videoFiles.size - 1
+                            nextButton.isEnabled = canGoForward
+                            nextButton.alpha = if (canGoForward) 1.0f else 0.5f
+                        }
+                    }
+
+                    prevButton?.setOnClickListener {
+                        if (currentVideoIndex > 0) {
+                            playVideoAt(currentVideoIndex - 1)
+                            updateButtons()
+                        }
+                    }
+
+                    nextButton?.setOnClickListener {
+                        if (currentVideoIndex < videoFiles.size - 1) {
+                            playVideoAt(currentVideoIndex + 1)
+                            updateButtons()
+                        }
+                    }
+
+                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+                        if (visibility == View.VISIBLE) {
+                            updateButtons()
+                        }
+                    })
                 }
             }
         )
