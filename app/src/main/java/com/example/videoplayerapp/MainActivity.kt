@@ -31,9 +31,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.videoplayerapp.ui.theme.VideoPlayerAppTheme
@@ -161,18 +163,20 @@ fun FolderItem(folder: VideoFolder, onClick: (String) -> Unit) {
         Icon(
             painter = painterResource(id = R.drawable.heroicons_folder),
             contentDescription = "Folder",
-            modifier = Modifier.size(40.dp),
+            modifier = Modifier.size(56.dp),
             tint = Color.Gray
         )
         Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = folder.name,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            fontSize = 18.sp
         )
         Text(
             text = "${folder.videoCount}",
-            color = Color.Gray
+            color = Color.Gray,
+            fontSize = 18.sp
         )
     }
 }
@@ -206,7 +210,7 @@ fun VideoItem(videoPath: String, onClick: () -> Unit) {
                 bitmap = it.asImageBitmap(),
                 contentDescription = "Video Thumbnail",
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(128.dp)
                     .clip(RectangleShape),
                 contentScale = ContentScale.Crop
             )
@@ -216,7 +220,8 @@ fun VideoItem(videoPath: String, onClick: () -> Unit) {
         Column {
             Text(
                 text = File(videoPath).name,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -318,21 +323,36 @@ fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
     val videoFolder = File(videoPath).parent ?: ""
     val videoFiles = remember { getVideosInFolder(context, File(videoFolder).name) }
     var currentVideoIndex by remember { mutableStateOf(videoFiles.indexOf(videoPath)) }
+    var autoPlayNext by remember { mutableStateOf(false) }
+    var randomPlay by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(videoPath))
             prepare()
             playWhenReady = true
-        }
-    }
-
-    fun playVideoAt(index: Int) {
-        if (index in videoFiles.indices) {
-            currentVideoIndex = index
-            exoPlayer.setMediaItem(MediaItem.fromUri(videoFiles[index]))
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_ENDED) {
+                        if (autoPlayNext) {
+                            val nextIndex = currentVideoIndex + 1
+                            if (nextIndex < videoFiles.size) {
+                                currentVideoIndex = nextIndex
+                                setMediaItem(MediaItem.fromUri(videoFiles[nextIndex]))
+                                prepare()
+                                playWhenReady = true
+                            }
+                        } else if (randomPlay) {
+                            // Losowanie następnego wideo
+                            val nextIndex = (videoFiles.indices).random()
+                            currentVideoIndex = nextIndex
+                            setMediaItem(MediaItem.fromUri(videoFiles[nextIndex]))
+                            prepare()
+                            playWhenReady = true
+                        }
+                    }
+                }
+            })
         }
     }
 
@@ -369,14 +389,20 @@ fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
 
                     prevButton?.setOnClickListener {
                         if (currentVideoIndex > 0) {
-                            playVideoAt(currentVideoIndex - 1)
+                            currentVideoIndex -= 1
+                            exoPlayer.setMediaItem(MediaItem.fromUri(videoFiles[currentVideoIndex]))
+                            exoPlayer.prepare()
+                            exoPlayer.playWhenReady = true
                             updateButtons()
                         }
                     }
 
                     nextButton?.setOnClickListener {
                         if (currentVideoIndex < videoFiles.size - 1) {
-                            playVideoAt(currentVideoIndex + 1)
+                            currentVideoIndex += 1
+                            exoPlayer.setMediaItem(MediaItem.fromUri(videoFiles[currentVideoIndex]))
+                            exoPlayer.prepare()
+                            exoPlayer.playWhenReady = true
                             updateButtons()
                         }
                     }
@@ -394,7 +420,7 @@ fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
             onClick = onBack,
             modifier = Modifier
                 .padding(16.dp)
-                .size(48.dp)
+                .size(60.dp)
                 .align(Alignment.TopStart)
         ) {
             Icon(
@@ -403,6 +429,34 @@ fun VideoPlayerScreen(videoPath: String, onBack: () -> Unit) {
                 tint = Color.White
             )
         }
+
+        IconButton(
+            onClick = { autoPlayNext = !autoPlayNext },
+            modifier = Modifier
+                .padding(16.dp)
+                .size(60.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.arrowrightcircle),
+                contentDescription = "Toggle Auto-play",
+                tint = if (autoPlayNext) Color.White else Color.Gray
+            )
+        }
+
+        IconButton(
+            onClick = { randomPlay = !randomPlay },
+            modifier = Modifier
+                .padding(16.dp)
+                .size(60.dp)
+                .align(Alignment.TopEnd)
+                .offset(x = (-70).dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.shuffle),
+                contentDescription = "Toggle Random Play",
+                tint = if (randomPlay) Color.White else Color.Gray
+            )
+        }
     }
 }
-

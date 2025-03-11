@@ -11,4 +11,13 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
+    <CheckBox
+        android:id="@+id/autoPlayNextCheckBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Auto-Next"
+        android:checked="false"
+        android:layout_gravity="center_horizontal"
+        android:padding="10dp"/>
+
 </LinearLayout>
