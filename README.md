@@ -35,15 +35,15 @@ This project was developed for the Mobile Technologies course. It's an Android a
 
 <details>
 <summary>Screenshot 1: Folder List</summary>
-<img src="screenshots/folder_list.png" alt="Folder List" width="300"/>
+<img src="screenshots/folder_list.png" alt="Folder List" width="400"/>
 </details>
 
 <details>
 <summary>Screenshot 2: Video List</summary>
-<img src="screenshots/video_list.png" alt="Video List" width="300"/>
+<img src="screenshots/video_list.png" alt="Video List" width="400"/>
 </details>
 
 <details>
 <summary>Screenshot 3: Video Player</summary>
-<img src="screenshots/video_player.png" alt="Video Player" width="300"/>
+<img src="screenshots/video_player.png" alt="Video Player" width="800"/>
 </details>
